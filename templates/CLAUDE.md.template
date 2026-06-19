@@ -1,0 +1,28 @@
+# <Project Name>
+
+## What This Is
+<One paragraph. What it does, language/framework, who uses it.>
+
+## Architecture
+- `<dir>/` — <what lives here>
+- `<dir>/` — <what lives here>
+- `<dir>/` — <what lives here>
+
+## Development Commands
+- Install: `<cmd>`
+- Dev: `<cmd>`
+- Test: `<cmd>`
+- Lint: `<cmd>`
+- Build: `<cmd>`
+
+## Conventions
+- Naming: <rule>
+- File structure: <rule>
+- Imports: <rule>
+
+## What NOT To Do
+- <anti-pattern>
+- <anti-pattern>
+
+## Current Focus
+<What the active work is. Update this as work shifts.>
