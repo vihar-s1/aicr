@@ -14,17 +14,17 @@ check() {
   local desc="$1" result="$2"
   if [ "$result" = "ok" ]; then
     printf "  \033[32m✓\033[0m %s\n" "$desc"
-    ((PASS++))
+    PASS=$((PASS+1))
   else
     printf "  \033[31m✗\033[0m %s — %s\n" "$desc" "$result"
-    ((FAIL++))
+    FAIL=$((FAIL+1))
   fi
 }
 
 warn() {
   local desc="$1" msg="$2"
   printf "  \033[33m⚠\033[0m %s — %s\n" "$desc" "$msg"
-  ((WARN++))
+  WARN=$((WARN+1))
 }
 
 echo "Validating: $DIR"
