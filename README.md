@@ -1,74 +1,66 @@
 # aicr — AI Config Repo
 
-A spec for structuring AI assistant configuration in software projects. Not a platform, not a CLI, not a TOML format. A **convention** — like `.editorconfig` or `.prettierrc`.
+A convention for structuring AI assistant configuration in software projects.
+Not a platform, not a CLI, not a config format — a convention, like
+`.editorconfig`.
 
 Drop a `.ai/` folder into any project. Point any AI assistant at it. Done.
 
----
-
-## Why
-
-Two problems with AI assistant usage in real projects:
-
-1. **No shared config** — every developer sets up their own Claude/Cursor/Copilot guardrails from scratch, inconsistently
-2. **Token waste** — AI reads things it shouldn't, uses the wrong model for the task, bloats context, and costs more than necessary
-
-This spec fixes both.
-
----
+It solves two things: every developer otherwise builds their own guardrails
+from scratch, and assistants waste tokens reading what they shouldn't with a
+model heavier than the task needs.
 
 ## Quickstart
 
 ```bash
-# 1. Copy the templates into your project
-cp -r templates/ your-project/.ai/
-
-# 2. Edit .ai/CLAUDE.md — describe your project
-# 3. Edit .ai/exclusions.md — what the AI must not read
-# 4. Validate
-./validate.sh your-project/
+./setup.sh --init ../your-project        # scaffold .ai/ and wire the hooks
+./validate.sh ../your-project            # check your work
+./validate.sh --measure ../your-project  # what the always-loaded files cost
 ```
 
----
+Then fill in `.ai/CLAUDE.md` and set the model tiers in `.ai/config`.
 
-## Spec Files
+## Layout
 
-| File | Purpose |
+```
+.ai/
+├── config           model tiers, effort levels, context limits
+├── CLAUDE.md        project context and conventions
+├── exclusions.md    paths the assistant must never read
+├── scope.md         in-scope / read-only / off-limits
+├── tools.md         tool permissions and output format standards
+├── token-budget.md  which tier and effort fits which task
+└── hooks/
+    ├── exclude-guard.sh   blocks a read of an excluded path (PreToolUse)
+    ├── context-guard.sh   warns as the file-count budget runs down (PostToolUse)
+    └── tier-context.sh    injects the routing policy at session start
+```
+
+`config` is the only file holding concrete values — everything else refers to
+its keys. Each tier resolves to a triple: which model, how hard it thinks, and
+what work belongs to it. Tiers are vendor-neutral, so nothing breaks when a
+provider ships a new version, and the routing policy is machine-readable so an
+external orchestrator can consume the same declaration.
+
+## This Repo
+
+| Path | |
 |---|---|
-| `.ai/CLAUDE.md` | Project context + conventions (read by Claude every turn) |
-| `.ai/exclusions.md` | Files/folders the AI must not read |
-| `.ai/tools.md` | Allowed/denied tools + output format standards |
-| `.ai/scope.md` | Which dirs are in/out of scope |
-| `.ai/token-budget.md` | Model routing, effort levels, context limits |
+| [SPEC.md](SPEC.md) | The specification |
+| `templates/` | The deliverable — copied into a project as `.ai/` |
+| `validate.sh` | Zero-dependency validator; `--measure` reports per-turn token cost |
+| `setup.sh` | `--init` scaffolds a project; `--tools` installs token-optimization tooling |
+| [docs/templates.md](docs/templates.md) | What each template file is for, and how to fill it |
+| [docs/hooks.md](docs/hooks.md) | Hook contract, wiring, and testing |
+| [docs/token-optimization.md](docs/token-optimization.md) | Tooling below the spec: MCP servers, CLI, settings |
 
-Full spec: [SPEC.md](SPEC.md)
+Markdown and Bash — the spec has to be readable and runnable anywhere, which
+rules out a dependency on any one language's toolchain.
 
----
+`.ai/` in this repo is a copy of `templates/`, so aicr is configured by its own
+convention: change the template, then re-copy. `CLAUDE.md` is a symlink to
+`.ai/CLAUDE.md`. `./validate.sh .` passes.
 
-## Project Structure
-
-```
-aicr/
-├── SPEC.md                      # Full specification
-├── validate.sh                  # Validator script (zero deps)
-├── templates/                   # Copy-paste starter for any project
-│   ├── CLAUDE.md.template
-│   ├── exclusions.md
-│   ├── tools.md
-│   ├── scope.md
-│   └── token-budget.md
-├── examples/                    # Complete .ai/ setups per stack
-│   ├── nextjs-typescript/
-│   ├── python-fastapi/
-│   └── go-stdlib/
-└── plugins/
-    └── README.md                # MCP servers + tools that reduce tokens
-```
-
----
-
-## Language/Framework
-
-Markdown + Bash. The "software" is one shell script. The rest is documentation.
-
-> Convention-first: the product is the spec, not the tooling.
+Hook behaviour is verified against the installed Claude Code binary before it
+gets documented — see [docs/hooks.md](docs/hooks.md) for the contract and the
+three things most published hook examples get wrong.
