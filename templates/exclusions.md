@@ -13,8 +13,12 @@
 **/build/**
 **/__pycache__/**
 **/.venv/**
+# Lockfiles: huge, and zero value in context
 **/*.lock
 **/*.sum
+**/package-lock.json
+**/pnpm-lock.yaml
+**/npm-shrinkwrap.json
 
 # Assets (no value in AI context)
 **/public/images/**

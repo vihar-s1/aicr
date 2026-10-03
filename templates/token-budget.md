@@ -1,38 +1,55 @@
 ## Model Routing
 
-Pick the model that matches the task. Switching mid-session: `/model <name>`.
+Model IDs live in `.ai/config` (`MODEL_FAST`, `MODEL_BALANCED`, `MODEL_DEEP`).
+This table maps work to a tier — it never names a model, so it doesn't rot
+when a provider ships a new version.
 
-| Task Type | Model | Command |
-|---|---|---|
-| Search, grep, explore, lookup | Haiku | `/model claude-haiku-4-5` |
-| Bug fixes, regular coding, edits | Sonnet | `/model claude-sonnet-4-6` |
-| Architecture, code review, complex debug | Opus | `/model claude-opus-4-7` |
-| Explaining code, answering questions | Haiku | `/model claude-haiku-4-5` |
+| Task | Tier |
+|---|---|
+| Search, grep, file lookup, explaining code | `FAST` |
+| Bug fixes, feature work, routine edits | `BALANCED` |
+| Architecture, code review, complex debugging | `DEEP` |
+
+The machine-readable form of this table is `ROUTE_FAST` / `ROUTE_BALANCED` /
+`ROUTE_DEEP` in `.ai/config`. `.ai/hooks/tier-context.sh` injects it at session
+start, so the policy is in context from turn one rather than hoping this file
+gets read. External orchestrators read the same keys.
+
+Claude Code: set the default in `settings.json` (`"model"`), switch mid-session
+with `/model`.
 
 ## Effort Levels
 
-| Task | Effort | Command |
-|---|---|---|
-| Grep, lookup, one-liner | low | `/effort low` |
-| Standard feature, bug fix | medium | `/effort medium` |
-| Review, architecture, complex refactor | high | `/effort high` |
-| Security review, system redesign | max | `/effort max` |
+Each tier carries its own effort in `.ai/config` (`EFFORT_FAST`,
+`EFFORT_BALANCED`, `EFFORT_DEEP`), with `EFFORT_DEFAULT` as the fallback for
+work that matches no tier.
 
-Default: `medium`. Only escalate when getting it right the first time saves 3+ follow-up turns.
+| Tier | Effort |
+|---|---|
+| `FAST` | `EFFORT_FAST` |
+| `BALANCED` | `EFFORT_BALANCED` |
+| `DEEP` | `EFFORT_DEEP` |
+| Security review, system redesign | `xhigh` |
+
+Claude Code: set `"effortLevel"` in `settings.json`, or `/effort <level>`
+mid-session. Valid values are `low`, `medium`, `high`, `xhigh`.
+
+Only escalate when getting it right the first time saves 3+ follow-up turns.
 
 ## Context Limits
 
-**Max files per session:** 25
-**Warn at:** 15 files
-**Max file size to read in full:** 400 lines
+Defined in `.ai/config`: `MAX_FILES`, `WARN_FILES`, `MAX_FILE_LINES`.
+`.ai/hooks/context-guard.sh` warns when a session crosses them.
+
+`validate.sh --measure` reports what the always-loaded files actually cost per
+turn and per session.
 
 ## Context Strategy
 
 - Read specific functions or sections, not whole files
 - Ask before reading more than 5 files at once
-- Files over 400 lines: read only the relevant section
-- Run `/compact` before switching major task contexts (finishing a debug session, starting a new feature)
-- Don't wait for context limit — compact proactively
+- Files over `MAX_FILE_LINES`: read only the relevant section
+- Compact before switching major task contexts — don't wait for the limit
 
 ## Compaction Triggers
 
