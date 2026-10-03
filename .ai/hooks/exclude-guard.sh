@@ -32,8 +32,24 @@ fi
 [ -n "$file" ] || exit 0
 
 # Compare repo-relative paths so patterns don't depend on where the repo lives.
-rel="${file#"$PWD"/}"
+#
+# Patterns in exclusions.md are project-relative, so they only have meaning for
+# paths inside the project. An absolute path elsewhere on the machine is out of
+# scope and must be allowed through: stripping $PWD from it is a no-op, which
+# would leave `rel` absolute and let a pattern like **/*.png match any file on
+# the disk — including ones the user deliberately handed to the assistant.
+# Guarding paths outside the project is a user-settings concern, not this hook's.
+case "$file" in
+  "$PWD"/*) rel="${file#"$PWD"/}" ;;
+  /*)       exit 0 ;;                 # absolute, outside the project
+  *)        rel="${file#./}" ;;       # already relative
+esac
 rel="${rel#./}"
+
+# A relative path that climbs out of the project is out of scope too.
+case "$rel" in
+  ../*) exit 0 ;;
+esac
 
 # Translate a gitignore-style glob into an anchored regex.
 #   **/  -> (.*/)? (any depth, including none)    **  -> .*
