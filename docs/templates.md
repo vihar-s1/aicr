@@ -65,3 +65,25 @@ rule of thumb into a number.
 CLAUDE.md is for understanding the project. The other `.ai/` files are
 behavioral constraints. Keep them separate — mixing them bloats the file that
 gets re-read every turn.
+
+## bin/route-tier.sh — the reference resolver
+
+`config` declares the routing policy; `bin/route-tier.sh` is the one
+implementation of reading it, so consumers route identically instead of each
+reimplementing the match.
+
+```
+route-tier.sh "migrate the dashboard to React"   # DEEP opus high
+route-tier.sh --model "fix the P&L rounding"     # sonnet
+route-tier.sh --strict --tier "frobnicate"       # exit 4, no output
+```
+
+Matching is case-insensitive and word-bounded, so `add` does not fire inside
+`address`. Precedence is DEEP > BALANCED > FAST: a task naming work from two
+tiers gets the more capable one, because under-spending on a hard task is paid
+back with interest in rework.
+
+Exit codes carry the part callers get wrong. `0` resolved, `3` no config, and
+with `--strict`, `4` nothing matched. A caller that cannot tolerate a guess
+uses `--strict` and keeps its own default on `3` or `4` — "I could not classify
+this" must not reach the dispatcher disguised as `DEFAULT_TIER`.
