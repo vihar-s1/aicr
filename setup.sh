@@ -2,10 +2,13 @@
 # setup.sh — aicr setup
 #
 #   ./setup.sh --init [DIR]   scaffold .ai/ into a project and wire the hooks
+#   ./setup.sh --self [DIR]   same as --init, then overlay self/* on top of .ai/
+#                             (used to regenerate aicr's own dog-food; DIR
+#                             defaults to the aicr repo itself)
 #   ./setup.sh --tools        install token-optimization tooling for Claude Code
 #   ./setup.sh --help         this message
 #
-# Both modes are idempotent. --tools backs up ~/.claude/settings.json before
+# All modes are idempotent. --tools backs up ~/.claude/settings.json before
 # every mutation and verifies the file is still valid JSON afterwards.
 
 set -uo pipefail
@@ -52,6 +55,7 @@ EOF
 while [ $# -gt 0 ]; do
   case "$1" in
     --init)        MODE=init; [ $# -gt 1 ] && [[ "$2" != --* ]] && { TARGET="$2"; shift; } ;;
+    --self)        MODE=self; TARGET="$REPO"; [ $# -gt 1 ] && [[ "$2" != --* ]] && { TARGET="$2"; shift; } ;;
     --tools)       MODE=tools ;;
     --no-headroom) SKIP_HEADROOM=true ;;
     --yes|-y)      ASSUME_YES=true ;;
@@ -71,23 +75,49 @@ confirm() {
 
 # ── Mode: --init ──────────────────────────────────────────────────────────────
 
-if [ "$MODE" = init ]; then
-  echo -e "${BOLD}aicr — scaffolding .ai/ into ${TARGET}${RESET}"
+if [ "$MODE" = init ] || [ "$MODE" = self ]; then
+  if [ "$MODE" = self ]; then
+    echo -e "${BOLD}aicr — composing .ai/ from templates/ + self/ into ${TARGET}${RESET}"
+  else
+    echo -e "${BOLD}aicr — scaffolding .ai/ into ${TARGET}${RESET}"
+  fi
   echo "────────────────────────────────────────────────────────"
 
   [ -d "$TARGET" ] || { fail "$TARGET is not a directory"; exit 1; }
 
   step "Templates"
-  if [ -d "$TARGET/.ai" ]; then
+  # --self regenerates every time; --init refuses to overwrite.
+  if [ -d "$TARGET/.ai" ] && [ "$MODE" = init ]; then
     skip ".ai/ already exists — not overwriting. Diff against $REPO/templates/ by hand."
   else
+    if [ "$MODE" = self ] && [ -d "$TARGET/.ai" ]; then
+      rm -rf "$TARGET/.ai"
+    fi
     mkdir -p "$TARGET/.ai"
     cp "$REPO"/templates/*.md "$TARGET/.ai/"
     cp "$REPO"/templates/config "$TARGET/.ai/"
     cp -r "$REPO"/templates/hooks "$TARGET/.ai/"
-    cp "$REPO"/templates/CLAUDE.md.template "$TARGET/.ai/CLAUDE.md"
+    [ -d "$REPO/templates/bin" ] && cp -r "$REPO"/templates/bin "$TARGET/.ai/"
     chmod +x "$TARGET"/.ai/hooks/*.sh
+    [ -d "$TARGET/.ai/bin" ] && chmod +x "$TARGET"/.ai/bin/*.sh 2>/dev/null
     ok ".ai/ created from templates"
+  fi
+
+  if [ "$MODE" = self ]; then
+    step "Overlay (self/)"
+    if [ ! -d "$REPO/self" ]; then
+      info "no $REPO/self/ — using templates/ only. Create self/<file> to override"
+      info "any template file with project-specific values (model tiers, scope, etc.)."
+    else
+      overlaid=0
+      for src in "$REPO"/self/*; do
+        [ -f "$src" ] || continue
+        name="$(basename "$src")"
+        cp "$src" "$TARGET/.ai/$name"
+        overlaid=$((overlaid+1))
+      done
+      ok "$overlaid file(s) overlaid from self/"
+    fi
   fi
 
   step "CLAUDE.md symlink"
@@ -136,11 +166,16 @@ JSON
 
   echo ""
   echo "────────────────────────────────────────────────────────"
-  echo -e "${BOLD}Next:${RESET}"
-  echo "  1. Fill in $TARGET/.ai/CLAUDE.md"
-  echo "  2. Set the model tiers in $TARGET/.ai/config"
-  echo "  3. Trim $TARGET/.ai/exclusions.md and scope.md to this project"
-  echo "  4. Check your work: $REPO/validate.sh $TARGET"
+  if [ "$MODE" = self ]; then
+    echo -e "${BOLD}Done.${RESET} .ai/ regenerated from templates/ + self/."
+    echo "  Verify:  $REPO/validate.sh $TARGET"
+  else
+    echo -e "${BOLD}Next:${RESET}"
+    echo "  1. Fill in $TARGET/.ai/CLAUDE.md"
+    echo "  2. Set the model tiers in $TARGET/.ai/config"
+    echo "  3. Trim $TARGET/.ai/exclusions.md and scope.md to this project"
+    echo "  4. Check your work: $REPO/validate.sh $TARGET"
+  fi
   exit 0
 fi
 

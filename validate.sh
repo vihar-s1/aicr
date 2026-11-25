@@ -53,7 +53,7 @@ fi
 # What gets re-sent every turn is the only cost that compounds. Everything
 # else in .ai/ is read on demand and priced once.
 if [ "$MODE" = measure ]; then
-  CLAUDE_MD_MAX_LINES=150
+  AGENT_MD_MAX_LINES=150
   TURNS_PER_SESSION=40
   [ -f "$DIR/.ai/config" ] && { . "$DIR/.ai/config"; } 2>/dev/null
 
@@ -127,6 +127,19 @@ fi
 
 echo "Validating: $DIR"
 echo ""
+
+# aicr-style repo convention: templates/ + self/ at root means .ai/ is a
+# build artifact. Auto-bootstrap if it's missing so a fresh clone validates
+# with one command.
+if [ -d "$DIR/templates" ] && [ ! -d "$DIR/.ai" ] && [ -x "$DIR/setup.sh" ]; then
+  echo "── Bootstrap ───────────────────────────────────────"
+  "$DIR/setup.sh" --self "$DIR" >/dev/null 2>&1 \
+    && printf "  \033[32m✓\033[0m .ai/ composed from templates/%s\n" \
+      "$([ -d "$DIR/self" ] && echo " + self/")" \
+    || printf "  \033[31m✗\033[0m setup.sh --self failed — run it manually to see why\n"
+  echo ""
+fi
+
 echo "── Structure ───────────────────────────────────────"
 
 [ -d "$DIR/.ai" ] && r="ok" || r=".ai/ directory missing"
@@ -146,13 +159,13 @@ fi
 echo ""
 echo "── Config ──────────────────────────────────────────"
 
-CLAUDE_MD_MAX_LINES=150
+AGENT_MD_MAX_LINES=150
 CONFIG="$DIR/.ai/config"
 if [ -f "$CONFIG" ]; then
   # shellcheck disable=SC1090
   source "$CONFIG"
 
-  for key in MAX_FILES WARN_FILES MAX_FILE_LINES CLAUDE_MD_MAX_LINES; do
+  for key in MAX_FILES WARN_FILES MAX_FILE_LINES AGENT_MD_MAX_LINES; do
     if [ -n "${!key:-}" ]; then
       check "config defines $key (${!key})" "ok"
     else
@@ -298,7 +311,7 @@ CLAUDE_FILE=""
 [ -f "$DIR/.ai/CLAUDE.md" ] && CLAUDE_FILE="$DIR/.ai/CLAUDE.md"
 
 if [ -n "$CLAUDE_FILE" ]; then
-  limit="${CLAUDE_MD_MAX_LINES:-150}"
+  limit="${AGENT_MD_MAX_LINES:-150}"
   line_count=$(wc -l < "$CLAUDE_FILE" | tr -d ' ')
   if [ "$line_count" -le "$limit" ]; then
     check "CLAUDE.md within $limit lines ($line_count)" "ok"
@@ -311,9 +324,68 @@ if [ -n "$CLAUDE_FILE" ]; then
     check "CLAUDE.md has ${section%%\\|*}" "$r"
   done
 
+  # Per-H2-section cap: a single bloated section squeezes the required ones
+  # and is the usual shape of growth before the hard cap fires.
+  section_cap="${AGENT_MD_SECTION_MAX_LINES:-40}"
+  over_sections=$(awk -v cap="$section_cap" '
+    /^## / { if (name && count > cap) printf "%s|%d\n", name, count; name=$0; count=0; next }
+    { count++ }
+    END { if (name && count > cap) printf "%s|%d\n", name, count }
+  ' "$CLAUDE_FILE")
+  if [ -z "$over_sections" ]; then
+    check "CLAUDE.md sections within $section_cap lines each" "ok"
+  else
+    while IFS= read -r over; do
+      [ -z "$over" ] && continue
+      name="${over%%|*}"; count="${over##*|}"
+      check "section '${name#\#\# }' within $section_cap lines" "$count lines — split or trim"
+    done <<< "$over_sections"
+  fi
+
   if grep -q "<.*>" "$CLAUDE_FILE" && grep -qi "your-choice\|<cmd>\|<rule>\|<Project Name>" "$CLAUDE_FILE"; then
     warn "CLAUDE.md placeholders" "template placeholders still present — fill them in"
   fi
+fi
+
+echo ""
+echo "── Overlay Drift ───────────────────────────────────"
+# For an aicr-style repo (has templates/ + self/), every file under self/
+# must expose a superset of the schema its templates/ counterpart defines.
+# Catches the case where a template adds a new config key or markdown
+# section and the self/ overlay silently falls behind, producing a .ai/
+# that validates today but breaks downstream consumers of the template.
+if [ -d "$DIR/templates" ] && [ -d "$DIR/self" ]; then
+  for src in "$DIR"/self/*; do
+    [ -f "$src" ] || continue
+    name="$(basename "$src")"
+    tmpl="$DIR/templates/$name"
+    [ -f "$tmpl" ] || continue
+
+    case "$name" in
+      config)
+        missing=$(comm -23 \
+          <(grep -oE '^[A-Z_][A-Z0-9_]*=' "$tmpl" | sort -u) \
+          <(grep -oE '^[A-Z_][A-Z0-9_]*=' "$src"  | sort -u))
+        if [ -z "$missing" ]; then
+          check "self/$name covers all keys in templates/$name" "ok"
+        else
+          check "self/$name covers all keys in templates/$name" \
+            "missing: $(echo "$missing" | tr '\n' ' ' | sed 's/=//g; s/ *$//')"
+        fi
+        ;;
+      *.md)
+        missing=$(comm -23 \
+          <(grep -E '^## ' "$tmpl" | sort -u) \
+          <(grep -E '^## ' "$src"  | sort -u))
+        if [ -z "$missing" ]; then
+          check "self/$name covers all H2 sections in templates/$name" "ok"
+        else
+          check "self/$name covers all H2 sections in templates/$name" \
+            "missing: $(echo "$missing" | tr '\n' '|' | sed 's/## //g; s/|$//')"
+        fi
+        ;;
+    esac
+  done
 fi
 
 echo ""
