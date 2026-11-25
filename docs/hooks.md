@@ -103,3 +103,31 @@ echo '{"tool_name":"Read","tool_input":{"file_path":".env"}}' \
 echo '{"tool_name":"Read","tool_input":{"file_path":"src/index.ts"}}' \
   | .ai/hooks/exclude-guard.sh; echo "exit=$?"    # expect exit=0
 ```
+
+## Validator pre-commit hook
+
+The Claude-side hooks above guard the assistant at read time. A separate
+pre-commit hook guards the human at commit time — refusing to accept a commit
+when `validate.sh` fails. Enables the AGENT_MD_MAX_LINES cap and config
+consistency checks as real gates instead of advisory numbers.
+
+Install in any project's `.git/hooks/pre-commit` (chmod +x):
+
+```bash
+#!/usr/bin/env bash
+# Refuse the commit if .ai/ drifts out of spec.
+exec ./validate.sh . >/dev/null
+```
+
+Three lines. `exec` replaces the shell with `validate.sh` so its exit code is
+the hook's; the `>/dev/null` keeps git's commit output clean (re-run
+`validate.sh .` by hand to see what failed).
+
+Mirror as CI with one job (GitHub Actions):
+
+```yaml
+- uses: actions/checkout@v4
+- run: ./validate.sh .
+```
+
+Either catches CLAUDE.md growth and config drift; both is belt-and-braces.

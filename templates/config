@@ -49,7 +49,8 @@ ROUTE_DEEP=review,architect,design,audit,security,migrate,debug,investigate,trad
 MAX_FILES=25
 WARN_FILES=15
 MAX_FILE_LINES=400
-CLAUDE_MD_MAX_LINES=150
+AGENT_MD_MAX_LINES=150
+AGENT_MD_SECTION_MAX_LINES=40
 
 # ── Measurement ───────────────────────────────────────────────────
 # Turns per session, used by `validate.sh --measure` to project the

@@ -45,7 +45,8 @@ model by name, so nothing else rots when a provider ships a new version.
 Every byte is prepended to every turn, which makes it the most expensive
 repeated cost in the project. Rules that matter:
 
-1. **Hard limit: `CLAUDE_MD_MAX_LINES` (default 150).** `validate.sh` enforces it.
+1. **Hard limit: `AGENT_MD_MAX_LINES` (default 150).** `validate.sh` enforces
+   it — total and per-H2-section (40-line cap per section).
 2. **Commands over descriptions.** `` `pnpm test` `` beats "we use vitest."
 3. **Explicit over implicit.** "Never use `npm install`" beats "we prefer pnpm."
 4. **Bullets, not paragraphs.**
@@ -59,6 +60,43 @@ Required sections are listed in [../SPEC.md](../SPEC.md) and checked by
 Run `validate.sh --measure` to see what it actually costs. The limit exists
 because this file is re-sent every turn; the measurement turns that from a
 rule of thumb into a number.
+
+### What NOT to put in CLAUDE.md
+
+Real projects grow their `CLAUDE.md` into 100 KB+ monsters by inlining the
+wrong things. Each of these belongs elsewhere:
+
+- **Tool recipes, usage examples, command cookbooks.** Three-line recipes
+  compound. Put them in `tools.md` or `docs/`.
+- **Skill inventories.** A one-liner per skill times a few dozen skills is a
+  full CLAUDE.md on its own. Maintain a separate index and reference it.
+- **Historical decisions and context.** Why we chose X over Y last year is
+  git log or `docs/adr/`, not every-turn context.
+- **Per-contributor or team conventions.** Code review etiquette, Slack
+  norms, PR process — these are team docs, not assistant instructions.
+- **Setup / install instructions beyond 1–2 lines.** `README.md`.
+- **Multi-step workflow recipes.** "To deploy, do A then B then C" → `docs/`.
+- **Important-sounding callouts repeated across sections.** Pick one home
+  and link from the others.
+
+If the answer to "should this be in CLAUDE.md" is "it's important" — that's
+not the question. The question is "does the assistant need this every turn,
+or can it look it up when relevant?" If the latter, it belongs elsewhere.
+
+### Enforcement — make the limit real
+
+The validator is advisory until something runs it on every change. Two
+recommended integrations:
+
+- **Pre-commit hook.** See [hooks.md § Validator pre-commit hook](hooks.md).
+- **CI.** One job in GitHub Actions:
+
+  ```yaml
+  - uses: actions/checkout@v4
+  - run: ./validate.sh .
+  ```
+
+Wire one or both. A limit nobody runs is a limit that will be blown past.
 
 ## What belongs where
 

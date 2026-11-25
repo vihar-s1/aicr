@@ -69,7 +69,7 @@ ROUTE_DEEP=review,architect,audit,security,debug,...
 MAX_FILES=25
 WARN_FILES=15
 MAX_FILE_LINES=400
-CLAUDE_MD_MAX_LINES=150
+AGENT_MD_MAX_LINES=150
 TURNS_PER_SESSION=40
 ```
 
@@ -185,8 +185,11 @@ For Claude Code, verified against 2.1.236:
 }
 ```
 
-Keep these values in sync with `.ai/config` — `config` is what humans and the
-validator read; `settings.json` is what the tool reads.
+`config` is what humans and the validator read; `settings.json` is what the
+tool reads. Keep them in sync with `.ai/bin/sync-settings.sh`, which resolves
+the BALANCED tier (`MODEL_BALANCED`, `EFFORT_DEFAULT`) and merges `model` +
+`effortLevel` into `.claude/settings.json` without touching other keys.
+`--check` returns non-zero if they have drifted — run it in CI.
 
 `ignorePatterns` and `autoCompactThreshold` are **not** settings keys, despite
 circulating widely. Use the hook in §6 to exclude files.
@@ -201,7 +204,7 @@ most expensive repeated cost in the project.
 Required sections: **What This Is**, **Architecture**, **Development Commands**,
 **Conventions**, **What NOT To Do**, **Current Focus**.
 
-Hard limit: `CLAUDE_MD_MAX_LINES` (default 150), enforced by `validate.sh`.
+Hard limit: `AGENT_MD_MAX_LINES` (default 150), enforced by `validate.sh`.
 
 Writing rules and the rationale: [docs/templates.md](docs/templates.md).
 
@@ -209,14 +212,46 @@ Writing rules and the rationale: [docs/templates.md](docs/templates.md).
 else in `.ai/` is a behavioral constraint. Mixing them bloats the one file that
 gets re-read every turn.
 
+**Anti-patterns that cause CLAUDE.md to grow past the limit** — each belongs
+elsewhere:
+
+| Pattern | Where it belongs |
+|---|---|
+| Tool usage examples, command recipes beyond 3 lines | `tools.md` or `docs/` |
+| Skill inventories, one-line-per-skill summaries | a separate index file, referenced |
+| Historical decision records / ADR-style context | `docs/` or git log |
+| Per-contributor or team conventions | team docs, not assistant context |
+| Setup / install instructions beyond 1–2 lines | `README.md` |
+| Workflow recipes ("to deploy, run X then Y then Z") | `docs/` |
+| Important-sounding callouts repeated across sections | pick one home, link from the others |
+
+The validator flags every single H2 section over 40 lines even when the file
+total is still under the limit — a bloated section squeezes the required ones
+and is the usual shape of growth before the hard cap fires.
+
 ---
 
 ## Validation
 
 `./validate.sh [dir]` — zero dependencies, exit 0 on pass. Checks structure,
 `config` keys and their internal consistency, routing-keyword disjointness,
-required sections, hook installation and wiring, `CLAUDE.md` length and
-sections, and `.gitignore` coverage for secrets.
+required sections, hook installation and wiring, `CLAUDE.md` length (total
+and per-H2-section), and `.gitignore` coverage for secrets.
+
+**Wire it as a gate.** The validator is advisory until something runs it on
+every change. Two recommended integrations:
+
+- **Pre-commit hook.** `docs/hooks.md` shows the three-line `.git/hooks/pre-commit`
+  that refuses a commit when the validator fails.
+- **CI.** For GitHub Actions, one job suffices:
+
+  ```yaml
+  - uses: actions/checkout@v4
+  - run: ./validate.sh .
+  ```
+
+  This catches CLAUDE.md growth and config drift at PR time, which is the
+  only moment where enforcement is cheap.
 
 `./validate.sh --measure [dir]` reports what the always-loaded files cost per
 turn and per session. `CLAUDE.md` is re-sent every turn, so it is the only file
@@ -237,11 +272,13 @@ think about this repo again — except when onboarding someone new.
 
 ---
 
-## Open Questions
+## Roadmap
 
-- Should the `.ai/` folder name be configurable? The hooks already honour
-  `AICR_DIR`, but nothing else does.
-- Cursor uses `.cursorrules`, Copilot uses its own instructions file. Should
-  `.ai/` generate those, or co-exist with them?
-- `config` and `settings.json` overlap on model and effort. Worth generating
-  one from the other?
+**Phase 2 — cross-assistant generators.** Ship `.ai/bin/emit-cursor.sh` and
+`.ai/bin/emit-copilot.sh` as explicit, scripted one-shots: read `.ai/CLAUDE.md`
+plus `.ai/tools.md` and write `.cursorrules` and `.github/copilot-instructions.md`
+at the project root. Scripts, not daemons — the author re-runs them after
+editing `.ai/`, same as `sync-settings.sh`. `validate.sh --check` verifies the
+generated files are current. `.ai/` stays the single source of truth; the
+emitted files are build artifacts and should be gitignored or regenerated in
+CI, not hand-edited.
